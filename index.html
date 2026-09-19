@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TurespuestoYa - Busca y Pide al Instante</title>
+    <!-- Tailwind CSS v4 CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- Leaflet CSS para el Mapa -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans">
+
+    <!-- Header / Barra de Navegación -->
+    <header class="bg-slate-800 border-b border-slate-700 p-4 sticky top-0 z-50 shadow-md">
+        <div class="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-2">
+                <span class="text-2xl font-black text-amber-500 tracking-wider">Turespuesto<span class="text-white">Ya</span></span>
+            </div>
+            <!-- Enlace rápido para ir al panel de la repuestera -->
+            <nav class="flex items-center gap-4">
+                <a href="panel.html" target="_blank" class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded-lg text-sm transition shadow">
+                    Panel de Repuestera ⚙️
+                </a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Contenido Principal -->
+    <main class="max-w-6xl mx-auto p-4 flex-grow w-full grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
+        
+        <!-- Columna Izquierda: Buscador y Resultados -->
+        <section class="md:col-span-1 bg-slate-800 border border-slate-700 p-5 rounded-2xl shadow-xl flex flex-col gap-4">
+            <h1 class="text-xl font-bold text-slate-200">¿Qué repuesto necesitas?</h1>
+            
+            <div class="relative">
+                <input type="text" id="searchInput" placeholder="Ej. Correa, pastillas, amortiguador..." class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500 transition">
+            </div>
+
+            <!-- Lista de Repuestos Disponibles -->
+            <div id="catalogList" class="flex flex-col gap-3 overflow-y-auto max-h-[450px] pr-1">
+                <!-- Los elementos se cargan por JavaScript -->
+            </div>
+        </section>
+
+        <!-- Columna Derecha: Mapa GPS y Ubicación -->
+        <section class="md:col-span-2 bg-slate-800 border border-slate-700 p-5 rounded-2xl shadow-xl flex flex-col gap-4">
+            <div class="flex justify-between items-center">
+                <h2 class="text-xl font-bold text-slate-200">Tu Ubicación para el Envío</h2>
+                <button onclick="centrarMapa()" class="bg-slate-700 hover:bg-slate-600 text-xs px-3 py-1.5 rounded-lg font-medium transition text-amber-400">
+                    📍 Centrar GPS
+                </button>
+            </div>
+
+            <p class="text-sm text-slate-400">Mueve el marcador o usa tu ubicación actual para indicar dónde entregaremos tu pedido.</p>
+
+            <!-- Contenedor del Mapa -->
+            <div id="map" class="w-full h-80 rounded-xl border border-slate-700 z-10"></div>
+
+            <div class="bg-slate-900 p-3 rounded-xl border border-slate-700 flex flex-col gap-1">
+                <span class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Coordenadas de Entrega:</span>
+                <span id="coordsText" class="text-sm font-mono text-amber-400">Obteniendo señal GPS...</span>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal de Confirmación de Pedido -->
+    <div id="orderModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden justify-center items-center z-50 p-4">
+        <div class="bg-slate-800 border border-slate-700 p-6 rounded-2xl max-w-md w-full shadow-2xl flex flex-col gap-4">
+            <h3 class="text-xl font-bold text-slate-100">Confirmar tu Pedido</h3>
+            <p id="modalItemInfo" class="text-sm text-slate-300"></p>
+            
+            <div class="flex flex-col gap-2">
+                <label class="text-xs font-semibold text-slate-400 uppercase">Tu Nombre y Apellido:</label>
+                <input type="text" id="clientName" placeholder="Ej. Carlos Pérez" class="bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-slate-100 focus:outline-none focus:border-amber-500">
+            </div>
+
+            <div class="flex flex-col gap-2">
+                <label class="text-xs font-semibold text-slate-400 uppercase">Teléfono de Contacto:</label>
+                <input type="text" id="clientPhone" placeholder="Ej. 0414-1234567" class="bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-slate-100 focus:outline-none focus:border-amber-500">
+            </div>
+
+            <div class="flex gap-3 mt-2">
+                <button onclick="cerrarModal()" class="flex-1 bg-slate-700 hover:bg-slate-600 font-bold py-2.5 rounded-xl transition text-sm">Cancelar</button>
+                <button onclick="enviarPedido()" class="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-2.5 rounded-xl transition text-sm shadow">Pedir Ahora</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS para el Mapa -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <script>
+        // Base de datos de prueba de repuestos
+        const repuestos = [
+            { id: 1, nombre: "Kit de Correa de Tiempo", precio: 45.00, desc: "Alta durabilidad, compatible con varios modelos.", categoria: "Motor" },
+            { id: 2, nombre: "Pastillas de Freno Delanteras", precio: 25.00, desc: "Excelente frenado y libre de ruidos molestos.", categoria: "Frenos" },
+            { id: 3, nombre: "Amortiguadores Traseros", precio: 70.00, desc: "Confort y estabilidad garantizada.", categoria: "Suspensión" },
+            { id: 4, nombre: "Bomba de Agua", precio: 38.00, desc: "Flujo óptimo para refrigeración del motor.", categoria: "Refrigeración" },
+            { id: 5, nombre: "Kit de Bujías de Encendido", precio: 20.00, desc: "Mejora el consumo de combustible y arranque.", categoria: "Encendido" }
+        ];
+
+        let map, marker;
+        let latActual = 7.7669; // Coordenadas iniciales por defecto (San Cristóbal)
+        let lngActual = -72.2250;
+        let repuestoSeleccionado = null;
+
+        // Inicializar Mapa
+        function initMap() {
+            map = L.map('map').setView([latActual, lngActual], 14);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+
+            marker = L.marker([latActual, lngActual], { draggable: true }).addTo(map);
+
+            // Actualizar coordenadas si arrastran el pin
+            marker.on('dragend', function(event) {
+                const position = marker.getLatLng();
+                latActual = position.lat;
+                lngActual = position.lng;
+                actualizarTextoCoords();
+            });
+
+            // Intentar obtener GPS real del navegador
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        latActual = position.coords.latitude;
+                        lngActual = position.coords.longitude;
+                        map.setView([latActual, lngActual], 16);
+                        marker.setLatLng([latActual, lngActual]);
+                        actualizarTextoCoords();
+                    },
+                    (error) => {
+                        console.warn("No se pudo obtener la geolocalización automática. Usando posición predeterminada.");
+                        actualizarTextoCoords();
+                    },
+                    { enableHighAccuracy: true }
+                );
+            }
+        }
+
+        function centrarMapa() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition((position) => {
+                    latActual = position.coords.latitude;
+                    lngActual = position.coords.longitude;
+                    map.setView([latActual, lngActual], 16);
+                    marker.setLatLng([latActual, lngActual]);
+                    actualizarTextoCoords();
+                });
+            } else {
+                alert("Tu navegador no soporta geolocalización.");
+            }
+        }
+
+        function actualizarTextoCoords() {
+            document.getElementById('coordsText').innerText = `${latActual.toFixed(5)}, ${lngActual.toFixed(5)}`;
+        }
+
+        // Renderizar catálogo en pantalla
+        function renderCatalogo(filtro = "") {
+            const contenedor = document.getElementById('catalogList');
+            contenedor.innerHTML = "";
+
+            const filtrados = repuestos.filter(r => 
+                r.nombre.toLowerCase().includes(filtro.toLowerCase()) || 
+                r.categoria.toLowerCase().includes(filtro.toLowerCase())
+            );
+
+            if (filtrados.length === 0) {
+                contenedor.innerHTML = `<p class="text-sm text-slate-500 text-center py-6">No se encontraron repuestos.</p>`;
+                return;
+            }
+
+            filtrados.forEach(rep => {
+                const card = document.createElement('div');
+                card.className = "bg-slate-900 border border-slate-700 hover:border-amber-500/50 p-4 rounded-xl flex flex-col gap-2 transition";
+                card.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <h3 class="font-bold text-slate-100">${rep.nombre}</h3>
+                        <span class="text-amber-400 font-mono font-bold">$${rep.precio.toFixed(2)}</span>
+                    </div>
+                    <p class="text-xs text-slate-400">${rep.desc}</p>
+                    <div class="flex justify-between items-center mt-2">
+                        <span class="text-[10px] bg-slate-800 text-slate-300 px-2 py-1 rounded-md border border-slate-700">${rep.categoria}</span>
+                        <button onclick="abrirModal(${rep.id})" class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-3 py-1.5 rounded-lg text-xs transition shadow">
+                            Pedir 🛒
+                        </button>
+                    </div>
+                `;
+                contenedor.appendChild(card);
+            });
+        }
+
+        // Control del Buscador en tiempo real
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            renderCatalogo(e.target.value);
+        });
+
+        function abrirModal(id) {
+            repuestoSeleccionado = repuestos.find(r => r.id === id);
+            document.getElementById('modalItemInfo').innerHTML = `Estás solicitando: <strong class="text-amber-400">${repuestoSeleccionado.nombre}</strong> por <strong class="text-amber-400">$${repuestoSeleccionado.precio.toFixed(2)}</strong>`;
+            document.getElementById('orderModal').classList.remove('hidden');
+            document.getElementById('orderModal').classList.add('flex');
+        }
+
+        function cerrarModal() {
+            document.getElementById('orderModal').classList.remove('flex');
+            document.getElementById('orderModal').classList.add('hidden');
+        }
+
+        // Enviar pedido y guardarlo en localStorage para que la repuestera lo reciba en el panel
+        function enviarPedido() {
+            const nombre = document.getElementById('clientName').value.trim();
+            const telefono = document.getElementById('clientPhone').value.trim();
+
+            if (!nombre || !telefono) {
+                alert("Por favor ingresa tu nombre y teléfono.");
+                return;
+            }
+
+            const nuevoPedido = {
+                id: Date.now(),
+                cliente: nombre,
+                telefono: telefono,
+                repuesto: repuestoSeleccionado.nombre,
+                precio: repuestoSeleccionado.precio,
+                lat: latActual,
+                lng: lngActual,
+                estado: 'Pendiente',
+                fecha: new Date().toLocaleTimeString()
+            };
+
+            // Obtener pedidos anteriores de la memoria local
+            let pedidos = JSON.parse(localStorage.getItem('turespuestoya_pedidos')) || [];
+            pedidos.unshift(nuevoPedido); // Agregar al inicio
+            localStorage.setItem('turespuestoya_pedidos', JSON.stringify(pedidos));
+
+            alert("¡Pedido realizado con éxito! La repuestera lo ha recibido en tiempo real.");
+            cerrarModal();
+            
+            // Limpiar campos del modal
+            document.getElementById('clientName').value = "";
+            document.getElementById('clientPhone').value = "";
+        }
+
+        // Arrancar la aplicación al cargar la página
+        window.onload = () => {
+            initMap();
+            renderCatalogo();
+        };
+    </script>
+</body>
+</html>
